@@ -23,15 +23,39 @@ PROJECT STRUCTURE
 
 If the PDF content is read successfully, chat_with_pdf(pdf_content) is called to start the chat interface.
 
-USAGE
+Here's the updated **Usage** section based on your provided instructions:
 
-1. Ensure that you have Python 3.x and the PyPDF2 library installed.
+USAGE:
 
-2. Place your PDF file in the same directory as your script or provide the correct path to your PDF file.
+1. **Prerequisites**:
+   - Ensure that you have **Python 3.x** installed on your system.
+   - You must have the **PyPDF2** library installed. If not         -installed, you can install it using:
+     pip install PyPDF2
 
-3. Run the script:
 
-   python your_script_name.py
+2. **Setup**:
+   - Place your **PDF file** in the same directory as your script, or ensure you provide the correct path to the PDF file you want to upload.
+
+3. **Running the Script**:
+   - Open a terminal or command prompt.
+   - Navigate to the directory where your script (`pdfbot.py`) is located.
+   - Run the script by executing:
+     python pdfbot.py
+
+4. **Interacting with the GUI**:
+   - Upon running the script, the **PDF Chatbot** GUI will open.
+   - You will see the following UI elements:
+     - **Upload PDF**: Click this button to select and upload your PDF file.
+     - once you click upload and choose the wait for few seconds until a new similar dialogue box appear.
+     - **Search**: Now, Enter your query in the text box and click this button to search for the text within the uploaded PDF.
+     - **Status Label**: This label will display the status of the uploaded PDF (e.g., "PDF uploaded and ready to use (Total Pages: x)").
+   - **Results**: The search results will be displayed in a text area within the GUI.
+
+5. **Note**:
+   - Ensure your PDF file contains searchable text. If no text is found, an appropriate message will be displayed.
+   - You can interact with the PDF by uploading different files and searching through them using various queries.
+
+This updated **Usage** section makes it clearer for users to understand the steps required to run and interact with the script efficiently.
 
 4. Interact with your PDF through the chat interface. Type your queries, and the bot will search for relevant content within the PDF and display it. Type exit to end the chat.
 
