@@ -128,13 +128,11 @@ We’re always looking for contributors to help us improve this project! Here’
      ```bash
      git commit -m "Add: Description of your changes"
      ```
-
 ### 6. **Push to Your Branch**
    - Push your changes to your forked repository:
      ```bash
      git push origin feature-branch-name
      ```
-
 ### 7. **Submit a Pull Request**
    - Go to the original repository on GitHub.
    - Click **Pull Requests** and submit your pull request for review.
