@@ -61,3 +61,4 @@ This updated **Usage** section makes it clearer for users to understand the step
 
    Don't forget to change the file_path to the original path of the required pdf
 
+--Added the Text-to-Speech support
