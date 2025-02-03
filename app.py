@@ -4,6 +4,7 @@ import re
 import pyttsx3
 import threading
 import time
+import json
 from typing import List, Tuple
 
 # Optional libraries for OCR
@@ -12,6 +13,12 @@ try:
     import pytesseract
 except ImportError:
     st.warning("To enable OCR for scanned PDFs, please install 'pdf2image' and 'pytesseract' libraries.")
+
+# For WebSocket client functionality
+try:
+    import websocket  # from 'websocket-client' package
+except ImportError:
+    st.warning("To enable real-time collaboration, please install the 'websocket-client' package.")
 
 # ------------------------------
 # Helper Functions
@@ -87,6 +94,45 @@ def text_to_speech(text: str):
         tts_engine.runAndWait()
     except Exception as e:
         st.error(f"TTS Error: {str(e)}")
+
+# ------------------------------
+# Real-Time Collaboration: WebSocket Client
+# ------------------------------
+
+WS_SERVER_URL = "ws://localhost:6789"
+
+def on_message(ws, message):
+    """Callback when a message is received from the WebSocket server."""
+    try:
+        data = json.loads(message)
+        # Append the received annotation to the shared session state list.
+        if "collab_annotations" not in st.session_state:
+            st.session_state.collab_annotations = []
+        st.session_state.collab_annotations.append(data)
+        # Force a re-run of the app to display new annotations.
+        st.experimental_rerun()
+    except Exception as e:
+        st.error(f"Error processing collaborative message: {e}")
+
+def on_error(ws, error):
+    st.error(f"WebSocket error: {error}")
+
+def on_close(ws, close_status_code, close_msg):
+    st.info("WebSocket connection closed.")
+
+def websocket_listen():
+    """Background thread function to connect and listen to the WebSocket server."""
+    ws = websocket.WebSocketApp(WS_SERVER_URL,
+                                on_message=on_message,
+                                on_error=on_error,
+                                on_close=on_close)
+    ws.run_forever()
+
+def start_ws_client():
+    """Start the WebSocket client thread if not already started."""
+    if "ws_client_started" not in st.session_state:
+        st.session_state.ws_client_started = True
+        threading.Thread(target=websocket_listen, daemon=True).start()
 
 # ------------------------------
 # Streamlit UI Configuration
@@ -182,6 +228,10 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# Start the WebSocket client for real-time collaboration
+if uploaded_file:
+    start_ws_client()
+
 # ------------------------------
 # Main Application Logic
 # ------------------------------
@@ -200,7 +250,7 @@ if uploaded_file:
     # Create tabs for different operations
     tab1, tab2, tab3 = st.tabs(["📄 Document Text", "🔍 Advanced Search", "🌍 Translation & TTS"])
 
-    # --- Tab 1: Document Text Viewer with Page Navigation & Annotation ---
+    # --- Tab 1: Document Text Viewer with Page Navigation, Annotation & Real-Time Collaboration ---
     with tab1:
         st.subheader("Document Content Viewer")
         
@@ -208,7 +258,9 @@ if uploaded_file:
         if "current_page" not in st.session_state:
             st.session_state.current_page = 0
         if "annotations" not in st.session_state:
-            st.session_state.annotations = {}  # key: page index, value: list of (selected_text, annotation) tuples
+            st.session_state.annotations = {}  # Local annotations: {page index: list of (selected_text, annotation)}
+        if "collab_annotations" not in st.session_state:
+            st.session_state.collab_annotations = []  # Collaborative annotations from other users
 
         # Navigation Buttons
         nav_cols = st.columns([1, 2, 1])
@@ -235,23 +287,49 @@ if uploaded_file:
         if st.button("Save Annotation"):
             if selected_text.strip() != "" and annotation_text.strip() != "":
                 page_index = st.session_state.current_page
+                # Save locally
                 if page_index not in st.session_state.annotations:
                     st.session_state.annotations[page_index] = []
+                annotation_data = {
+                    "page": page_index + 1,
+                    "selected_text": selected_text,
+                    "annotation": annotation_text,
+                    "timestamp": time.time(),
+                    "user": "LocalUser"  # In a real app, use a proper user ID
+                }
                 st.session_state.annotations[page_index].append((selected_text, annotation_text))
-                st.success("Annotation saved!")
+                st.success("Annotation saved locally!")
+                
+                # Send the annotation to the WebSocket server for collaboration
+                try:
+                    ws = websocket.create_connection(WS_SERVER_URL)
+                    ws.send(json.dumps(annotation_data))
+                    ws.close()
+                except Exception as e:
+                    st.error(f"Failed to send annotation to collaboration server: {e}")
             else:
                 st.warning("Please enter both the selected text and your annotation.")
 
-        # Show annotations for the current page (if any)
+        # Show local annotations for the current page (if any)
         page_index = st.session_state.current_page
         if page_index in st.session_state.annotations and st.session_state.annotations[page_index]:
-            st.markdown("#### Annotations for this Page:")
+            st.markdown("#### Your Annotations for this Page:")
             for i, (sel_text, ann_text) in enumerate(st.session_state.annotations[page_index]):
                 st.markdown(f"**Annotation {i+1}:**")
                 st.markdown(f"- **Selected Text:** {sel_text}")
                 st.markdown(f"- **Annotation:** {ann_text}")
         else:
-            st.info("No annotations for this page yet.")
+            st.info("No local annotations for this page yet.")
+
+        # Display Collaborative Annotations received from other users
+        st.markdown("### Collaborative Annotations from Other Users")
+        if st.session_state.collab_annotations:
+            for idx, ann in enumerate(st.session_state.collab_annotations):
+                st.markdown(f"**From {ann.get('user', 'Unknown')} on Page {ann.get('page')}:**")
+                st.markdown(f"- **Selected Text:** {ann.get('selected_text')}")
+                st.markdown(f"- **Annotation:** {ann.get('annotation')}")
+        else:
+            st.info("No collaborative annotations received yet.")
 
     # --- Tab 2: Document Search Engine & Annotation ---
     with tab2:

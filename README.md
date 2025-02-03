@@ -137,3 +137,20 @@ MIT License - See [LICENSE](LICENSE) for full text.
 ```
 
 
+## 🚀 New Features
+
+### Collaborative Annotation with WebSocket Integration
+
+- Implemented a **WebSocket listener** running in a background thread for real-time collaborative annotations.
+- Utilized a **thread-safe queue** to handle data transfer between the WebSocket thread and the Streamlit UI.
+- Ensured no Streamlit UI functions are called from background threads, preventing `ScriptRunContext` errors.
+
+### How It Works
+- The WebSocket client listens for incoming data asynchronously.
+- Received data is placed into a `queue.Queue()` stored in `st.session_state`.
+- The main Streamlit thread polls this queue and updates the UI accordingly.
+
+### How to Test
+1. Run the WebSocket server:
+   ```bash
+   python ws_server.py
