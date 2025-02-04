@@ -20,6 +20,12 @@ try:
 except ImportError:
     st.warning("To enable real-time collaboration, please install the 'websocket-client' package.")
 
+# For OpenAI API (ensure you have openai installed and your API key configured)
+try:
+    import openai
+except ImportError:
+    st.warning("To enable AI summarization, please install the 'openai' package.")
+
 # ------------------------------
 # Helper Functions
 # ------------------------------
@@ -94,6 +100,34 @@ def text_to_speech(text: str):
         tts_engine.runAndWait()
     except Exception as e:
         st.error(f"TTS Error: {str(e)}")
+
+def summarize_text(text: str) -> str:
+    """
+    Use the OpenAI API to summarize the provided text.
+    Make sure your API key is set in Streamlit secrets as OPENAI_API_KEY.
+    """
+    openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+    if not openai_api_key:
+        st.error("OpenAI API key not found in secrets. Please add it as OPENAI_API_KEY.")
+        return "Summarization unavailable."
+    
+    openai.api_key = openai_api_key
+    try:
+        # Using GPT-3.5 Turbo for summarization
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that summarizes text concisely."},
+                {"role": "user", "content": f"Summarize the following text:\n\n{text}"}
+            ],
+            max_tokens=150,
+            temperature=0.5,
+        )
+        summary = response["choices"][0]["message"]["content"].strip()
+        return summary
+    except Exception as e:
+        st.error(f"Error during summarization: {e}")
+        return "Summarization failed."
 
 # ------------------------------
 # Real-Time Collaboration: WebSocket Client
@@ -247,8 +281,13 @@ if uploaded_file:
 
     st.success(f"Document processed in {processing_time:.2f} seconds.")
 
-    # Create tabs for different operations
-    tab1, tab2, tab3 = st.tabs(["📄 Document Text", "🔍 Advanced Search", "🌍 Translation & TTS"])
+    # Create tabs for different operations, including the new AI Summarization tab
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📄 Document Text", 
+        "🔍 Advanced Search", 
+        "🌍 Translation & TTS", 
+        "🤖 AI Summarization"
+    ])
 
     # --- Tab 1: Document Text Viewer with Page Navigation, Annotation & Real-Time Collaboration ---
     with tab1:
@@ -400,6 +439,32 @@ if uploaded_file:
                     st.info("Reading text aloud...")
                 else:
                     st.warning("Please enter text to read aloud.")
+
+    # --- Tab 4: AI-Powered Summarization ---
+    with tab4:
+        st.subheader("AI-Powered Summarization")
+        st.markdown("Use the OpenAI API to generate a concise summary of your document content.")
+
+        # Option to select between summarizing the entire document or a single page.
+        summary_option = st.radio("Summarize:", ("Entire Document", "Current Page"), index=1)
+        if summary_option == "Entire Document":
+            # Concatenate all pages (you might want to limit the length if the PDF is very large)
+            full_text = "\n".join(pdf_pages)
+            if st.button("Summarize Entire Document"):
+                with st.spinner("Summarizing entire document..."):
+                    summary = summarize_text(full_text)
+                st.markdown("#### Summary:")
+                st.write(summary)
+        else:
+            # Summarize only the current page
+            current_text = pdf_pages[st.session_state.current_page]
+            st.markdown(f"**Current Page ({st.session_state.current_page + 1}) Content:**")
+            st.text_area("Page Text", value=current_text, height=200, disabled=True)
+            if st.button("Summarize Current Page"):
+                with st.spinner("Summarizing current page..."):
+                    summary = summarize_text(current_text)
+                st.markdown("#### Summary:")
+                st.write(summary)
 
 # ------------------------------
 # Footer Section
