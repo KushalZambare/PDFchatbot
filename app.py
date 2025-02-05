@@ -6,6 +6,8 @@ import threading
 import time
 import json
 from typing import List, Tuple
+from gtts import gTTS
+import tempfile 
 
 # Optional libraries for OCR
 try:
@@ -30,16 +32,7 @@ except ImportError:
 # Helper Functions
 # ------------------------------
 
-def init_tts_engine():
-    """Initialize the text-to-speech engine."""
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 150)
-    engine.setProperty('volume', 0.9)
-    voices = engine.getProperty('voices')
-    engine.setProperty('voice', voices[0].id if voices else None)
-    return engine
 
-tts_engine = init_tts_engine()
 
 def extract_pdf_text(file) -> Tuple[List[str], bool]:
     """
@@ -93,13 +86,15 @@ def translate_text(text: str, dest_lang: str) -> str:
         st.error(f"Translation Error: {str(e)}")
         return text
 
-def text_to_speech(text: str):
-    """Convert text to speech in a background thread."""
-    try:
-        tts_engine.say(text)
-        tts_engine.runAndWait()
-    except Exception as e:
-        st.error(f"TTS Error: {str(e)}")
+def text_to_speech(text):
+    """Convert text to speech and return the audio file path."""
+    tts = gTTS(text=text, lang="en")
+    
+    # Save audio in a temporary file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tts.save(temp_file.name)
+    
+    return temp_file.name
 
 def summarize_text(text: str) -> str:
     """
@@ -316,8 +311,26 @@ if uploaded_file:
 
         # Display the current page text (non-editable)
         page_text = pdf_pages[st.session_state.current_page]
+
         st.text_area("Page Text (copy any part to annotate)", value=page_text, height=400,
-                     key=f"page_text_{st.session_state.current_page}", disabled=True)
+                     key=f"page_text_{st.session_state.current_page}", disabled=True)    
+
+
+        st.subheader("🎤 Press Text-to-Speech ")
+
+        if st.button("Generate Speech"):
+            if page_text.strip():
+                audio_path = text_to_speech(page_text)
+                
+                # Play the generated audio
+                with open(audio_path, "rb") as f:
+                    audio_bytes = f.read()
+                st.audio(audio_bytes, format="audio/mp3")
+                
+                st.success("✅ Speech generated successfully!")
+            else:
+                st.warning("⚠️ Please enter text before generating speech.")
+
 
         st.markdown("### Annotate Selected Text")
         st.markdown("*Tip: To annotate a snippet, select the text from the above area, copy it, and paste it below.*")
@@ -431,14 +444,22 @@ if uploaded_file:
 
         # Text-to-Speech Section
         with col2:
-            st.markdown("### Text-to-Speech")
+            st.subheader("🎤 Press Text-to-Speech ")
             tts_text = st.text_area("Enter text to speak:", height=150)
-            if st.button("Read Aloud"):
+            if st.button("Generate Speech",key=456):
                 if tts_text.strip():
-                    threading.Thread(target=text_to_speech, args=(tts_text,), daemon=True).start()
-                    st.info("Reading text aloud...")
+                    audio_path = text_to_speech(tts_text)
+                    
+                    # Play the generated audio
+                    with open(audio_path, "rb") as f:
+                        audio_bytes = f.read()
+                    st.audio(audio_bytes, format="audio/mp3")
+                    
+                    st.success("✅ Speech generated successfully!")
                 else:
-                    st.warning("Please enter text to read aloud.")
+                    st.warning("⚠️ Please enter text before generating speech.")
+
+
 
     # --- Tab 4: AI-Powered Summarization ---
     with tab4:
