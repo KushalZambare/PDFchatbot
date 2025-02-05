@@ -24,10 +24,10 @@ except ImportError:
 try:
     import openai
 except ImportError:
-    st.warning("To enable AI summarization, please install the 'openai' package.")
+    st.warning("To enable AI summarization and Q&A, please install the 'openai' package.")
 
 # ------------------------------
-# Helper Functions (Same as before)
+# Helper Functions
 # ------------------------------
 
 def init_tts_engine():
@@ -129,8 +129,51 @@ def summarize_text(text: str) -> str:
         st.error(f"Error during summarization: {e}")
         return "Summarization failed."
 
+def answer_question(question: str, pdf_pages: List[str]) -> Tuple[str, List[int]]:
+    """
+    Answer a question based on the document content.
+    Performs a simple keyword-based search to find relevant pages,
+    then sends the question along with the extracted context to the OpenAI API.
+    Returns the answer and a list of relevant page numbers.
+    """
+    openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+    if not openai_api_key:
+        st.error("OpenAI API key not found in secrets. Please add it as OPENAI_API_KEY.")
+        return "Answering unavailable.", []
+    
+    openai.api_key = openai_api_key
+    # Identify relevant pages using a simple keyword search
+    relevant_pages = []
+    keywords = question.lower().split()
+    for i, page in enumerate(pdf_pages):
+        if any(keyword in page.lower() for keyword in keywords):
+            relevant_pages.append(i+1)  # pages are 1-indexed for display
+    context = "\n".join([pdf_pages[i-1] for i in relevant_pages]) if relevant_pages else "No specific context available."
+    
+    prompt = (
+        f"Based on the following document content, answer the question: {question}\n\n"
+        f"Document:\n{context}\n\n"
+        "Please include citations like [Page X] where applicable."
+    )
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that answers questions based on provided document content."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=250,
+            temperature=0.5,
+        )
+        answer = response["choices"][0]["message"]["content"].strip()
+        return answer, relevant_pages
+    except Exception as e:
+        st.error(f"Error during Q&A: {e}")
+        return "An error occurred while processing your question.", relevant_pages
+
 # ------------------------------
-# Real-Time Collaboration: WebSocket Client (Unchanged)
+# Real-Time Collaboration: WebSocket Client
 # ------------------------------
 
 WS_SERVER_URL = "ws://localhost:6789"
@@ -148,10 +191,9 @@ def on_message(ws, message):
             if "collab_chat" not in st.session_state:
                 st.session_state.collab_chat = []
             st.session_state.collab_chat.append(data)
-        st.rerun()  # Updated to use st.rerun instead of st.experimental_rerun
+        st.rerun()  # Use st.rerun to update the UI
     except Exception as e:
         st.error(f"Error processing collaborative message: {e}")
-
 
 def on_error(ws, error):
     st.error(f"WebSocket error: {error}")
@@ -212,7 +254,7 @@ with st.sidebar:
     )
 
 # ------------------------------
-# Conditional CSS Styling for Dark and Light Modes (Unchanged)
+# Conditional CSS Styling for Dark and Light Modes
 # ------------------------------
 
 if dark_mode:
@@ -272,7 +314,7 @@ custom_css = f"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ------------------------------
-# Header Section (Unchanged)
+# Header Section
 # ------------------------------
 
 st.markdown(f"""
@@ -287,7 +329,7 @@ if uploaded_file:
     start_ws_client()
 
 # ------------------------------
-# Main Application Logic (with additional tabs for collaboration)
+# Main Application Logic (with additional tabs for various functionalities)
 # ------------------------------
 
 if uploaded_file:
@@ -301,13 +343,14 @@ if uploaded_file:
 
     st.success(f"Document processed in {processing_time:.2f} seconds.")
 
-    # Create tabs including a new Collaboration Chat tab
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # Create tabs including the new Q&A tab
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📄 Document Text", 
         "🔍 Advanced Search", 
         "🌍 Translation & TTS", 
         "🤖 AI Summarization",
-        "💬 Collaboration Chat"
+        "💬 Collaboration Chat",
+        "🤖 Q&A"
     ])
 
     # --- Tab 1: Document Text Viewer with Annotations and Revision History ---
@@ -406,7 +449,7 @@ if uploaded_file:
         else:
             st.info("No collaborative annotations received yet.")
 
-    # --- Tab 2: Document Search Engine & Annotation (Unchanged) ---
+    # --- Tab 2: Document Search Engine & Annotation ---
     with tab2:
         st.subheader("Document Search Engine")
         search_term = st.text_input("Enter search keywords:", "")
@@ -442,7 +485,7 @@ if uploaded_file:
             else:
                 st.warning("No matches found in the document.")
 
-    # --- Tab 3: Translation & Text-to-Speech (Unchanged) ---
+    # --- Tab 3: Translation & Text-to-Speech ---
     with tab3:
         st.subheader("Translation & Text-to-Speech")
         col1, col2 = st.columns(2)
@@ -476,7 +519,7 @@ if uploaded_file:
                 else:
                     st.warning("Please enter text to read aloud.")
 
-    # --- Tab 4: AI-Powered Summarization (Unchanged) ---
+    # --- Tab 4: AI-Powered Summarization ---
     with tab4:
         st.subheader("AI-Powered Summarization")
         st.markdown("Use the OpenAI API to generate a concise summary of your document content.")
@@ -529,23 +572,41 @@ if uploaded_file:
                     "timestamp": time.time(),
                     "user": st.session_state.username,
                     "message": chat_message.strip()
-            }
-            # Append to local chat history
-            st.session_state.collab_chat.append(chat_data)
-            # Send the chat message to the WebSocket server
-            try:
-                ws = websocket.create_connection(WS_SERVER_URL)
-                ws.send(json.dumps(chat_data))
-                ws.close()
-            except Exception as e:
-                st.error(f"Failed to send chat message to collaboration server: {e}")
-            st.rerun()  # Updated here as well
-        else:
-            st.warning("Please enter a message.")
+                }
+                # Append to local chat history
+                st.session_state.collab_chat.append(chat_data)
+                # Send the chat message to the WebSocket server
+                try:
+                    ws = websocket.create_connection(WS_SERVER_URL)
+                    ws.send(json.dumps(chat_data))
+                    ws.close()
+                except Exception as e:
+                    st.error(f"Failed to send chat message to collaboration server: {e}")
+                st.rerun()  # Update the UI
+            else:
+                st.warning("Please enter a message.")
 
+    # --- Tab 6: Q&A Interface ---
+    with tab6:
+        st.subheader("Question Answering")
+        st.markdown("Ask a question about the document and receive an answer along with citations to relevant pages.")
+        question = st.text_input("Enter your question:", key="qa_question")
+        if st.button("Get Answer"):
+            if question.strip():
+                with st.spinner("Processing question..."):
+                    answer, relevant_pages = answer_question(question, pdf_pages)
+                st.markdown("#### Answer:")
+                st.write(answer)
+                if relevant_pages:
+                    st.markdown("#### Relevant Pages:")
+                    st.write(", ".join(map(str, relevant_pages)))
+                else:
+                    st.info("No relevant pages found.")
+            else:
+                st.warning("Please enter a question.")
 
 # ------------------------------
-# Footer Section (Unchanged)
+# Footer Section
 # ------------------------------
 
 st.markdown(f"""
