@@ -27,7 +27,7 @@ except ImportError:
     st.warning("To enable AI summarization, please install the 'openai' package.")
 
 # ------------------------------
-# Helper Functions
+# Helper Functions (Same as before)
 # ------------------------------
 
 def init_tts_engine():
@@ -130,7 +130,7 @@ def summarize_text(text: str) -> str:
         return "Summarization failed."
 
 # ------------------------------
-# Real-Time Collaboration: WebSocket Client
+# Real-Time Collaboration: WebSocket Client (Unchanged)
 # ------------------------------
 
 WS_SERVER_URL = "ws://localhost:6789"
@@ -139,14 +139,19 @@ def on_message(ws, message):
     """Callback when a message is received from the WebSocket server."""
     try:
         data = json.loads(message)
-        # Append the received annotation to the shared session state list.
-        if "collab_annotations" not in st.session_state:
-            st.session_state.collab_annotations = []
-        st.session_state.collab_annotations.append(data)
-        # Force a re-run of the app to display new annotations.
-        st.experimental_rerun()
+        # Append the received annotation or chat message to the shared session state list.
+        if data.get("type") == "annotation":
+            if "collab_annotations" not in st.session_state:
+                st.session_state.collab_annotations = []
+            st.session_state.collab_annotations.append(data)
+        elif data.get("type") == "chat":
+            if "collab_chat" not in st.session_state:
+                st.session_state.collab_chat = []
+            st.session_state.collab_chat.append(data)
+        st.rerun()  # Updated to use st.rerun instead of st.experimental_rerun
     except Exception as e:
         st.error(f"Error processing collaborative message: {e}")
+
 
 def on_error(ws, error):
     st.error(f"WebSocket error: {error}")
@@ -179,11 +184,26 @@ st.set_page_config(
 )
 
 # ------------------------------
-# Sidebar: Dark Mode Toggle and File Upload
+# Sidebar: User Profile, Dark Mode Toggle, and File Upload
 # ------------------------------
 
 with st.sidebar:
     st.header("📂 Document Operations")
+    # User Authentication / Profile
+    st.subheader("User Profile")
+    if "username" not in st.session_state:
+        st.session_state.username = ""
+    if st.session_state.username == "":
+        username_input = st.text_input("Enter your username", key="username_input")
+        if st.button("Set Username"):
+            if username_input.strip():
+                st.session_state.username = username_input.strip()
+                st.success(f"Username set to '{st.session_state.username}'")
+            else:
+                st.error("Please enter a valid username.")
+    else:
+        st.info(f"Logged in as: **{st.session_state.username}**")
+    
     dark_mode = st.checkbox("Enable Dark Mode", value=False)
     uploaded_file = st.file_uploader(
         "Upload your PDF",
@@ -192,7 +212,7 @@ with st.sidebar:
     )
 
 # ------------------------------
-# Conditional CSS Styling for Dark and Light Modes
+# Conditional CSS Styling for Dark and Light Modes (Unchanged)
 # ------------------------------
 
 if dark_mode:
@@ -252,7 +272,7 @@ custom_css = f"""
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ------------------------------
-# Header Section
+# Header Section (Unchanged)
 # ------------------------------
 
 st.markdown(f"""
@@ -262,12 +282,12 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# Start the WebSocket client for real-time collaboration
+# Start the WebSocket client for real-time collaboration if a file is uploaded
 if uploaded_file:
     start_ws_client()
 
 # ------------------------------
-# Main Application Logic
+# Main Application Logic (with additional tabs for collaboration)
 # ------------------------------
 
 if uploaded_file:
@@ -281,23 +301,26 @@ if uploaded_file:
 
     st.success(f"Document processed in {processing_time:.2f} seconds.")
 
-    # Create tabs for different operations, including the new AI Summarization tab
-    tab1, tab2, tab3, tab4 = st.tabs([
+    # Create tabs including a new Collaboration Chat tab
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📄 Document Text", 
         "🔍 Advanced Search", 
         "🌍 Translation & TTS", 
-        "🤖 AI Summarization"
+        "🤖 AI Summarization",
+        "💬 Collaboration Chat"
     ])
 
-    # --- Tab 1: Document Text Viewer with Page Navigation, Annotation & Real-Time Collaboration ---
+    # --- Tab 1: Document Text Viewer with Annotations and Revision History ---
     with tab1:
         st.subheader("Document Content Viewer")
         
-        # Initialize current page and annotations in session state
+        # Initialize current page, annotations, revision history, and collaborative annotations in session state
         if "current_page" not in st.session_state:
             st.session_state.current_page = 0
         if "annotations" not in st.session_state:
-            st.session_state.annotations = {}  # Local annotations: {page index: list of (selected_text, annotation)}
+            st.session_state.annotations = {}  # Local annotations: {page index: list of annotation dicts}
+        if "revision_history" not in st.session_state:
+            st.session_state.revision_history = {}  # {annotation_id: [list of revisions]}
         if "collab_annotations" not in st.session_state:
             st.session_state.collab_annotations = []  # Collaborative annotations from other users
 
@@ -326,18 +349,24 @@ if uploaded_file:
         if st.button("Save Annotation"):
             if selected_text.strip() != "" and annotation_text.strip() != "":
                 page_index = st.session_state.current_page
-                # Save locally
-                if page_index not in st.session_state.annotations:
-                    st.session_state.annotations[page_index] = []
+                # Create an annotation object with an ID and timestamp
                 annotation_data = {
+                    "id": f"{page_index}_{time.time()}",
                     "page": page_index + 1,
                     "selected_text": selected_text,
                     "annotation": annotation_text,
                     "timestamp": time.time(),
-                    "user": "LocalUser"  # In a real app, use a proper user ID
+                    "user": st.session_state.username,
+                    "type": "annotation"
                 }
-                st.session_state.annotations[page_index].append((selected_text, annotation_text))
+                # Save locally
+                if page_index not in st.session_state.annotations:
+                    st.session_state.annotations[page_index] = []
+                st.session_state.annotations[page_index].append(annotation_data)
                 st.success("Annotation saved locally!")
+                
+                # Record revision history (initial revision)
+                st.session_state.revision_history[annotation_data["id"]] = [annotation_data.copy()]
                 
                 # Send the annotation to the WebSocket server for collaboration
                 try:
@@ -353,24 +382,31 @@ if uploaded_file:
         page_index = st.session_state.current_page
         if page_index in st.session_state.annotations and st.session_state.annotations[page_index]:
             st.markdown("#### Your Annotations for this Page:")
-            for i, (sel_text, ann_text) in enumerate(st.session_state.annotations[page_index]):
-                st.markdown(f"**Annotation {i+1}:**")
-                st.markdown(f"- **Selected Text:** {sel_text}")
-                st.markdown(f"- **Annotation:** {ann_text}")
+            for ann in st.session_state.annotations[page_index]:
+                st.markdown(f"**Annotation by {ann['user']} on Page {ann['page']}:**")
+                st.markdown(f"- **Selected Text:** {ann['selected_text']}")
+                st.markdown(f"- **Annotation:** {ann['annotation']}")
+                # Display revision history for this annotation
+                if ann["id"] in st.session_state.revision_history:
+                    revs = st.session_state.revision_history[ann["id"]]
+                    st.markdown("  *Revision History:*")
+                    for idx, rev in enumerate(revs):
+                        rev_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(rev["timestamp"]))
+                        st.markdown(f"    - Revision {idx+1} at {rev_time}: {rev['annotation']}")
         else:
             st.info("No local annotations for this page yet.")
 
         # Display Collaborative Annotations received from other users
         st.markdown("### Collaborative Annotations from Other Users")
         if st.session_state.collab_annotations:
-            for idx, ann in enumerate(st.session_state.collab_annotations):
+            for ann in st.session_state.collab_annotations:
                 st.markdown(f"**From {ann.get('user', 'Unknown')} on Page {ann.get('page')}:**")
                 st.markdown(f"- **Selected Text:** {ann.get('selected_text')}")
                 st.markdown(f"- **Annotation:** {ann.get('annotation')}")
         else:
             st.info("No collaborative annotations received yet.")
 
-    # --- Tab 2: Document Search Engine & Annotation ---
+    # --- Tab 2: Document Search Engine & Annotation (Unchanged) ---
     with tab2:
         st.subheader("Document Search Engine")
         search_term = st.text_input("Enter search keywords:", "")
@@ -406,7 +442,7 @@ if uploaded_file:
             else:
                 st.warning("No matches found in the document.")
 
-    # --- Tab 3: Translation & Text-to-Speech ---
+    # --- Tab 3: Translation & Text-to-Speech (Unchanged) ---
     with tab3:
         st.subheader("Translation & Text-to-Speech")
         col1, col2 = st.columns(2)
@@ -440,7 +476,7 @@ if uploaded_file:
                 else:
                     st.warning("Please enter text to read aloud.")
 
-    # --- Tab 4: AI-Powered Summarization ---
+    # --- Tab 4: AI-Powered Summarization (Unchanged) ---
     with tab4:
         st.subheader("AI-Powered Summarization")
         st.markdown("Use the OpenAI API to generate a concise summary of your document content.")
@@ -466,8 +502,50 @@ if uploaded_file:
                 st.markdown("#### Summary:")
                 st.write(summary)
 
+    # --- Tab 5: Collaboration Chat ---
+    with tab5:
+        st.subheader("Collaboration Chat")
+        st.markdown("Discuss the document with other users in real-time.")
+        
+        # Initialize chat history in session state if needed
+        if "collab_chat" not in st.session_state:
+            st.session_state.collab_chat = []
+        
+        # Display chat history
+        st.markdown("### Chat History:")
+        if st.session_state.collab_chat:
+            for msg in st.session_state.collab_chat:
+                msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("timestamp", time.time())))
+                st.markdown(f"**{msg.get('user', 'Anonymous')}** at {msg_time}: {msg.get('message')}")
+        else:
+            st.info("No chat messages yet.")
+        
+        # Chat message input
+        chat_message = st.text_input("Enter your message:", key="chat_message_input")
+        if st.button("Send Message"):
+            if chat_message.strip():
+                chat_data = {
+                    "type": "chat",
+                    "timestamp": time.time(),
+                    "user": st.session_state.username,
+                    "message": chat_message.strip()
+            }
+            # Append to local chat history
+            st.session_state.collab_chat.append(chat_data)
+            # Send the chat message to the WebSocket server
+            try:
+                ws = websocket.create_connection(WS_SERVER_URL)
+                ws.send(json.dumps(chat_data))
+                ws.close()
+            except Exception as e:
+                st.error(f"Failed to send chat message to collaboration server: {e}")
+            st.rerun()  # Updated here as well
+        else:
+            st.warning("Please enter a message.")
+
+
 # ------------------------------
-# Footer Section
+# Footer Section (Unchanged)
 # ------------------------------
 
 st.markdown(f"""
