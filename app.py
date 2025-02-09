@@ -167,6 +167,33 @@ def answer_question(question: str, pdf_pages: List[str]) -> Tuple[str, List[int]
         st.error(f"Error during Q&A: {e}")
         return "An error occurred while processing your question.", relevant_pages
 
+def generate_quiz(text: str, num_questions: int = 5) -> str:
+    """
+    Use the OpenAI API to generate a quiz based on the provided text.
+    Returns the quiz questions and answers.
+    """
+    openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+    if not openai_api_key:
+        st.error("OpenAI API key not found in secrets. Please add it as OPENAI_API_KEY.")
+        return "Quiz generation unavailable."
+    
+    openai.api_key = openai_api_key
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates quiz questions based on provided content."},
+                {"role": "user", "content": f"Generate {num_questions} quiz questions with answers based on the following text:\n\n{text}"}
+            ],
+            max_tokens=500,
+            temperature=0.7,
+        )
+        quiz_content = response["choices"][0]["message"]["content"].strip()
+        return quiz_content
+    except Exception as e:
+        st.error(f"Error during quiz generation: {e}")
+        return "Quiz generation failed."
+
 # ------------------------------
 # Real-Time Collaboration: WebSocket Client
 # ------------------------------
@@ -338,14 +365,15 @@ if uploaded_file:
 
     st.success(f"Document processed in {processing_time:.2f} seconds.")
 
-    # Create tabs including the new Q&A tab
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    # Create tabs including the new Quiz Generation tab
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📄 Document Text", 
         "🔍 Advanced Search", 
         "🌍 Translation & TTS", 
         "🤖 AI Summarization",
         "💬 Collaboration Chat",
-        "🤖 Q&A"
+        "🤖 Q&A",
+        "📝 Quiz Generation"
     ])
 
     # --- Tab 1: Document Text Viewer with Annotations and Revision History ---
@@ -625,6 +653,22 @@ if uploaded_file:
                     st.info("No relevant pages found.")
             else:
                 st.warning("Please enter a question.")
+
+    # --- Tab 7: Quiz Generation ---
+    with tab7:
+        st.subheader("Quiz Generation")
+        st.markdown("Generate quiz questions (with answers) based on your document.")
+        quiz_option = st.radio("Generate quiz from:", ("Entire Document", "Current Page"), index=0)
+        num_questions = st.number_input("Number of Questions:", min_value=1, max_value=20, value=5)
+        if st.button("Generate Quiz"):
+            with st.spinner("Generating quiz..."):
+                if quiz_option == "Entire Document":
+                    text_for_quiz = "\n".join(pdf_pages)
+                else:
+                    text_for_quiz = pdf_pages[st.session_state.current_page]
+                quiz = generate_quiz(text_for_quiz, num_questions=num_questions)
+            st.markdown("#### Quiz:")
+            st.write(quiz)
 
 # ------------------------------
 # Footer Section
