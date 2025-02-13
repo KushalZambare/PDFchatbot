@@ -32,8 +32,6 @@ except ImportError:
 # Helper Functions
 # ------------------------------
 
-
-
 def extract_pdf_text(file) -> Tuple[List[str], bool]:
     """
     Extract text from a PDF file.
@@ -248,7 +246,7 @@ st.set_page_config(
 )
 
 # ------------------------------
-# Sidebar: User Profile, Dark Mode Toggle, and File Upload
+# Sidebar: User Profile, Theme Selection, and File Upload
 # ------------------------------
 
 with st.sidebar:
@@ -268,7 +266,45 @@ with st.sidebar:
     else:
         st.info(f"Logged in as: **{st.session_state.username}**")
     
-    dark_mode = st.checkbox("Enable Dark Mode", value=False)
+    # Theme Selection Feature
+    themes = {
+        "Light": {
+            "background_color": "#f8f9fa",
+            "text_color": "#000000",
+            "header_color": "#2c3e50",
+            "button_bg": "#4CAF50",
+            "button_hover": "#45a049"
+        },
+        "Dark": {
+            "background_color": "#1a1a1a",
+            "text_color": "#ffffff",
+            "header_color": "#ecf0f1",
+            "button_bg": "#4CAF50",
+            "button_hover": "#45a049"
+        },
+        "Ocean": {
+            "background_color": "#e0f7fa",
+            "text_color": "#006064",
+            "header_color": "#00838f",
+            "button_bg": "#00acc1",
+            "button_hover": "#00838f"
+        },
+        "Forest": {
+            "background_color": "#e8f5e9",
+            "text_color": "#1b5e20",
+            "header_color": "#2e7d32",
+            "button_bg": "#43a047",
+            "button_hover": "#388e3c"
+        },
+    }
+    theme_choice = st.selectbox("Select Theme", list(themes.keys()), index=0)
+    selected_theme = themes[theme_choice]
+    background_color = selected_theme["background_color"]
+    text_color = selected_theme["text_color"]
+    header_color = selected_theme["header_color"]
+    button_bg = selected_theme["button_bg"]
+    button_hover = selected_theme["button_hover"]
+    
     uploaded_file = st.file_uploader(
         "Upload your PDF",
         type=["pdf"],
@@ -276,21 +312,8 @@ with st.sidebar:
     )
 
 # ------------------------------
-# Conditional CSS Styling for Dark and Light Modes
+# Conditional CSS Styling using the Selected Theme
 # ------------------------------
-
-if dark_mode:
-    background_color = "#1a1a1a"
-    text_color = "#ffffff"
-    header_color = "#ecf0f1"
-    button_bg = "#4CAF50"
-    button_hover = "#45a049"
-else:
-    background_color = "#f8f9fa"
-    text_color = "#000000"
-    header_color = "#2c3e50"
-    button_bg = "#4CAF50"
-    button_hover = "#45a049"
 
 custom_css = f"""
     <style>
@@ -553,7 +576,7 @@ if uploaded_file:
         with col2:
             st.subheader("🎤 Press Text-to-Speech ")
             tts_text = st.text_area("Enter text to speak:", height=150)
-            if st.button("Generate Speech",key=456):
+            if st.button("Generate Speech", key=456):
                 if tts_text.strip():
                     audio_path = text_to_speech(tts_text)
                     
@@ -565,8 +588,6 @@ if uploaded_file:
                     st.success("✅ Speech generated successfully!")
                 else:
                     st.warning("⚠️ Please enter text before generating speech.")
-
-
 
     # --- Tab 4: AI-Powered Summarization ---
     with tab4:
