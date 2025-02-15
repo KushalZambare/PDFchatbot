@@ -7,7 +7,8 @@ import time
 import json
 from typing import List, Tuple
 from gtts import gTTS
-import tempfile 
+import tempfile
+import numpy as np  # NEW: For vector operations
 
 # Optional libraries for OCR
 try:
@@ -191,6 +192,40 @@ def generate_quiz(text: str, num_questions: int = 5) -> str:
     except Exception as e:
         st.error(f"Error during quiz generation: {e}")
         return "Quiz generation failed."
+
+# ------------------------------
+# New Feature: Semantic Search Helpers
+# ------------------------------
+
+def compute_page_embeddings(pdf_pages: List[str]) -> List[List[float]]:
+    """
+    Compute embeddings for each page using OpenAI's embedding model.
+    """
+    openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+    if not openai_api_key:
+        st.error("OpenAI API key not found for computing embeddings.")
+        return []
+    openai.api_key = openai_api_key
+    embeddings = []
+    for page in pdf_pages:
+        try:
+            response = openai.Embedding.create(model="text-embedding-ada-002", input=page)
+            embedding = response["data"][0]["embedding"]
+            embeddings.append(embedding)
+        except Exception as e:
+            st.error(f"Error computing embedding for a page: {e}")
+            embeddings.append([])
+    return embeddings
+
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    """
+    Compute the cosine similarity between two vectors.
+    """
+    a = np.array(a)
+    b = np.array(b)
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0.0
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 # ------------------------------
 # Real-Time Collaboration: WebSocket Client
@@ -432,7 +467,6 @@ if uploaded_file:
         st.text_area("Page Text (copy any part to annotate)", value=page_text, height=400,
                      key=f"page_text_{st.session_state.current_page}", disabled=True)    
 
-
         st.subheader("🎤 Press Text-to-Speech ")
 
         if st.button("Generate Speech"):
@@ -447,7 +481,6 @@ if uploaded_file:
                 st.success("✅ Speech generated successfully!")
             else:
                 st.warning("⚠️ Please enter text before generating speech.")
-
 
         st.markdown("### Annotate Selected Text")
         st.markdown("*Tip: To annotate a snippet, select the text from the above area, copy it, and paste it below.*")
@@ -513,41 +546,70 @@ if uploaded_file:
         else:
             st.info("No collaborative annotations received yet.")
 
-    # --- Tab 2: Document Search Engine & Annotation ---
+    # --- Tab 2: Document Search Engine & Annotation (with Semantic Search) ---
     with tab2:
         st.subheader("Document Search Engine")
-        search_term = st.text_input("Enter search keywords:", "")
+        # NEW: Toggle for Semantic Search
+        use_semantic_search = st.checkbox("Enable Semantic Search", value=False)
+        search_term = st.text_input("Enter search query:", "")
         if search_term.strip():
-            matches = []
-            pattern = re.compile(re.escape(search_term), re.IGNORECASE)
-            for page_num, text in enumerate(pdf_pages):
-                for match in pattern.finditer(text):
-                    # Extract context around the match (up to 100 characters on either side)
-                    start_context = max(0, match.start() - 100)
-                    end_context = min(len(text), match.end() + 100)
-                    context = text[start_context:end_context]
-                    # Highlight the match within the context
-                    highlighted = pattern.sub(r'<span class="highlight">\g<0></span>', context)
-                    matches.append((page_num + 1, highlighted))
-            
-            if matches:
-                st.success(f"Found {len(matches)} match(es):")
-                # Loop through each match and allow annotation
-                for idx, (page, context) in enumerate(matches):
-                    with st.container():
-                        st.markdown(f"**Page {page}:** {context}", unsafe_allow_html=True)
-                        annotate_toggle = st.checkbox("Add Annotation", key=f"annotate_toggle_{idx}")
-                        if annotate_toggle:
-                            if f"annotation_{idx}" not in st.session_state:
-                                st.session_state[f"annotation_{idx}"] = ""
-                            annotation = st.text_area("Enter your annotation:", 
-                                                      value=st.session_state[f"annotation_{idx}"], 
-                                                      key=f"annotation_{idx}_area")
-                            st.session_state[f"annotation_{idx}"] = annotation
-                            if annotation:
-                                st.info(f"Annotation: {annotation}")
+            if use_semantic_search:
+                # Compute and cache embeddings if not already done
+                if "page_embeddings" not in st.session_state:
+                    with st.spinner("Computing embeddings for document pages..."):
+                        st.session_state.page_embeddings = compute_page_embeddings(pdf_pages)
+                with st.spinner("Performing semantic search..."):
+                    try:
+                        response = openai.Embedding.create(model="text-embedding-ada-002", input=search_term)
+                        query_embedding = response["data"][0]["embedding"]
+                        results = []
+                        for i, page_embedding in enumerate(st.session_state.page_embeddings):
+                            if page_embedding:
+                                score = cosine_similarity(query_embedding, page_embedding)
+                                results.append((i+1, score, pdf_pages[i]))
+                        results.sort(key=lambda x: x[1], reverse=True)
+                        top_results = results[:3]  # Show top 3 matches
+                        if top_results:
+                            st.success(f"Top {len(top_results)} semantic match(es):")
+                            for page, score, text in top_results:
+                                snippet = text[:200] + "..." if len(text) > 200 else text
+                                st.markdown(f"**Page {page} (Score: {score:.2f}):** {snippet}")
+                        else:
+                            st.warning("No semantic matches found.")
+                    except Exception as e:
+                        st.error(f"Semantic search error: {e}")
             else:
-                st.warning("No matches found in the document.")
+                # Keyword-based search (existing functionality)
+                matches = []
+                pattern = re.compile(re.escape(search_term), re.IGNORECASE)
+                for page_num, text in enumerate(pdf_pages):
+                    for match in pattern.finditer(text):
+                        # Extract context around the match (up to 100 characters on either side)
+                        start_context = max(0, match.start() - 100)
+                        end_context = min(len(text), match.end() + 100)
+                        context = text[start_context:end_context]
+                        # Highlight the match within the context
+                        highlighted = pattern.sub(r'<span class="highlight">\g<0></span>', context)
+                        matches.append((page_num + 1, highlighted))
+                
+                if matches:
+                    st.success(f"Found {len(matches)} match(es):")
+                    # Loop through each match and allow annotation
+                    for idx, (page, context) in enumerate(matches):
+                        with st.container():
+                            st.markdown(f"**Page {page}:** {context}", unsafe_allow_html=True)
+                            annotate_toggle = st.checkbox("Add Annotation", key=f"annotate_toggle_{idx}")
+                            if annotate_toggle:
+                                if f"annotation_{idx}" not in st.session_state:
+                                    st.session_state[f"annotation_{idx}"] = ""
+                                annotation = st.text_area("Enter your annotation:", 
+                                                          value=st.session_state[f"annotation_{idx}"], 
+                                                          key=f"annotation_{idx}_area")
+                                st.session_state[f"annotation_{idx}"] = annotation
+                                if annotation:
+                                    st.info(f"Annotation: {annotation}")
+                else:
+                    st.warning("No matches found in the document.")
 
     # --- Tab 3: Translation & Text-to-Speech ---
     with tab3:
