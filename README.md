@@ -1,6 +1,6 @@
 # PDF Bot - Your Intelligent Document Assistant
 
-PDF Bot is a Streamlit-based application that allows you to upload a PDF and interact with its contents using a variety of AI-powered features. These include text extraction, advanced search (with both keyword-based and semantic search), translation, text-to-speech (TTS), summarization, Q&A, quiz generation, and real-time collaboration.
+PDF Bot is a Streamlit-based application that allows you to upload a PDF and interact with its contents using a variety of AI-powered features. These include text extraction, advanced search, (with both keyword-based and semantic search) translation, text-to-speech (TTS), summarization, Q&A, quiz generation, and real-time collaboration.
 
 ## Features
 
