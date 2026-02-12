@@ -27,7 +27,7 @@ PDF Bot is a Streamlit-based application that allows you to upload a PDF and int
 - **Real-Time Collaboration:**  
   Collaborate with others via WebSocket-enabled chat and shared annotations.
 
-## Installation
+## Installation Guide
 
 1. **Clone the Repository:**
    ```bash
