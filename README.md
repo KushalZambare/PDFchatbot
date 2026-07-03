@@ -12,7 +12,7 @@ PDF Bot is a Streamlit-based application that allows you to upload a PDF and int
 
 - **Advanced Search:**  
   Search within the document using:
-  - **Keyword-based Search:** Traditional text matching with highlighted results.
+  - **Keyword-based Search:** Traditional text matching with highlighted Results.
   - **Semantic Search:** Leverages OpenAI embeddings and cosine similarity for context-aware results.
 
 - **Translation & Text-to-Speech:**  
